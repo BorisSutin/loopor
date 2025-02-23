@@ -2,7 +2,8 @@
 // MIT License
 //
 // Copyright 2018 Stevie <modplugins@radig.com>
-//
+//  Edited 2024 Skyhawk <sutin.boris@gmail.com>
+
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
 // in the Software without restriction, including without limitation the rights
@@ -34,13 +35,14 @@
 
 // Core definitions for the LV2 interface
 #include "lv2/lv2plug.in/ns/lv2core/lv2.h"
+#include <string>
 
 //
 // Configuration constants
 //
 
 /// URI which identifies the plugin
-static const char* LOOPER_URI = "http://radig.com/plugins/loopor";
+static const char *SKHSYNTH_URI = "http://skyhawk.com/plugins/skhsynth";
 /// The maximum number of dubs that can be recorded
 static const size_t NR_OF_DUBS = 128;
 /// The maximum number of seconds which can be recorded for all dubs.
@@ -49,7 +51,7 @@ static const size_t NR_OF_DUBS = 128;
 /// it will consume less memory.
 static const size_t STORAGE_MEMORY_SECONDS = 360;
 static const size_t NR_OF_BLEND_SAMPLES = 64;
-/// Allow to enable logging to a file (/root/loopor.log)
+/// Allow to enable logging to a file (/root/skhsynth.log)
 static const bool LOG_ENABLED = false;
 
 ///
@@ -67,7 +69,7 @@ static float dbToFloat(float db)
 ///
 typedef enum
 {
-    // The looper does not have an active dub and is not recording.
+    // The synth does not have an active dub and is not recording.
     LOOPER_STATE_INACTIVE,
     // The looper has started recording a dub, but audio did not exceed the
     // threshold so far.
@@ -83,30 +85,39 @@ typedef enum
 ///
 enum PortIndex
 {
-    /// Audio input 1
+    /// Audio input_1
     LOOPER_INPUT1 = 0,
-    /// Audio input 2
+    /// Audio input_2
     LOOPER_INPUT2 = 1,
-    /// Audio output 1
+    /// Audio output_1
     LOOPER_OUTPUT1 = 2,
-    /// Audio output 2
+    /// Audio output_2
     LOOPER_OUTPUT2 = 3,
     /// Threshold parameter
     LOOPER_THRESHOLD = 4,
     /// Activate button
     LOOPER_ACTIVATE = 5,
+    /// Mode
+    LOOPER_STOP = 6,
     /// Reset button
-    LOOPER_RESET = 6,
+    LOOPER_RESET = 7,
     /// Undo button
-    LOOPER_UNDO = 7,
+    LOOPER_UNDO = 8,
     /// Redo button
-    LOOPER_REDO = 8,
+    LOOPER_REDO = 9,
     /// Dub button
-    LOOPER_DUB = 9,
+    LOOPER_DUB = 10,
     /// Amount of the dry signal in the output
-    LOOPER_DRY_AMOUNT = 10,
+    LOOPER_DRY_AMOUNT = 11,
     /// Select if dub ends at end of loop
-    LOOPER_CONTINUOUS_DUB = 11,
+    LOOPER_CONTINUOUS_DUB = 12,
+    /// Position
+    LOOPER_POSITION = 13,
+    /// Lenght
+    LOOPER_LENGHT = 14,
+    /// note
+    NOTE = 15,
+
 };
 
 ///
@@ -136,9 +147,9 @@ class MomentaryButton
 {
 public:
     // Connect the button to an input and set the callback.
-    void connect(void* input, std::function<void (bool, double, bool)> callback)
+    void connect(void *input, std::function<void(bool, double, bool)> callback)
     {
-        m_input = static_cast<const float*>(input);
+        m_input = static_cast<const float *>(input);
         m_callback = callback;
     }
 
@@ -170,9 +181,9 @@ public:
     /// \param bool pressed Is the button pressed or released?
     /// \param double How long since the last state change?
     /// \param doubleClick Was this pressed twice within a second?
-    std::function<void (bool, double, bool)> m_callback;
+    std::function<void(bool, double, bool)> m_callback;
     /// The input it is connected to.
-    const float* m_input = NULL;
+    const float *m_input = NULL;
     /// The last state, used for supressing multiple callbacks.
     bool m_lastState = false;
     /// When was the last change
@@ -199,7 +210,10 @@ public:
         m_storage2 = new float[m_storageSize];
 
         if (LOG_ENABLED)
-            m_logFile = fopen("/root/loopor.log", "wb");
+        {
+            m_logFile = fopen("/home/gtrbox/developer/SKHSynth/skhsynth-lv2/source/skhsynth.log", "wb");
+            log("start plugin\r\n");
+        }
     }
 
     // Destructor
@@ -214,26 +228,51 @@ public:
     /// Called by the host for each port to connect it to the looper.
     /// \param port The index of the port to be connected.
     /// \param data A pointer to the data where the parameter will be written to.
-    void connectPort(PortIndex port, void* data)
+    void connectPort(PortIndex port, void *data)
     {
         // Install the trivial ports
         switch (port)
         {
-            case LOOPER_INPUT1: m_input1 = (const float*)data; return;
-            case LOOPER_INPUT2: m_input2 = (const float*)data; return;
-            case LOOPER_OUTPUT1: m_output1 = (float*)data; return;
-            case LOOPER_OUTPUT2: m_output2 = (float*)data; return;
-            case LOOPER_THRESHOLD: m_thresholdParameter = (const float*)data; return;
-            case LOOPER_DRY_AMOUNT: m_dryAmountParameter = (const float*)data; return;
-            case LOOPER_CONTINUOUS_DUB: m_continuousDubParameter = (const float*)data; return;
-            default: break;
+        case LOOPER_INPUT1:
+            m_input1 = (const float *)data;
+            return;
+        case LOOPER_INPUT2:
+            m_input2 = (const float *)data;
+            return;
+        case LOOPER_OUTPUT1:
+            m_output1 = (float *)data;
+            return;
+        case LOOPER_OUTPUT2:
+            m_output2 = (float *)data;
+            return;
+        case LOOPER_THRESHOLD:
+            m_thresholdParameter = (const float *)data;
+            return;
+        case LOOPER_DRY_AMOUNT:
+            m_dryAmountParameter = (const float *)data;
+            return;
+        case LOOPER_CONTINUOUS_DUB:
+            m_continuousDubParameter = (const float *)data;
+            return;
+        case LOOPER_POSITION:
+            m_positionParameter = (float *)data;
+            return;
+        case LOOPER_LENGHT:
+            m_lenghtParameter = (float *)data;
+            return;
+        case NOTE:
+            m_value_note = (int *)data;
+            return;
+
+        default:
+            break;
         }
 
         // Install the buttons and set their callback functions.
         if (port == LOOPER_ACTIVATE)
         {
             m_activateButton.connect(data, [this](bool pressed, double interval, bool doubleClick)
-            {
+                                     {
                 if (!pressed)
                     return;
                 if (doubleClick)
@@ -245,13 +284,12 @@ public:
                 if (m_state == LOOPER_STATE_RECORDING || m_state == LOOPER_STATE_WAITING_FOR_THRESHOLD)
                     finishRecording();
                 else
-                    startRecording();
-            });
+                    startRecording(); });
         }
         else if (port == LOOPER_RESET)
         {
             m_resetButton.connect(data, [this](bool pressed, double interval, bool doubleClick)
-            {
+                                  {
                 if (!pressed)
                     return;
                 if (doubleClick)
@@ -263,31 +301,28 @@ public:
                 if (m_state == LOOPER_STATE_RECORDING || m_state == LOOPER_STATE_WAITING_FOR_THRESHOLD)
                     finishRecording();
                 else
-                    undo();
-            });
+                    undo(); });
         }
         else if (port == LOOPER_UNDO)
         {
             m_undoButton.connect(data, [this](bool pressed, double interval, bool doubleClick)
-            {
+                                 {
                 if (!pressed)
                     return;
-                undo();
-            });
+                undo(); });
         }
         else if (port == LOOPER_REDO)
         {
             m_redoButton.connect(data, [this](bool pressed, double interval, bool doubleClick)
-            {
+                                 {
                 if (!pressed)
                     return;
-                redo();
-            });
+                redo(); });
         }
         else if (port == LOOPER_DUB)
         {
             m_dubButton.connect(data, [this](bool pressed, double interval, bool doubleClick)
-            {
+                                {
                if (!pressed)
                     return;
                 if (doubleClick)
@@ -298,8 +333,25 @@ public:
 
                 if (m_state == LOOPER_STATE_RECORDING || m_state == LOOPER_STATE_WAITING_FOR_THRESHOLD)
                     finishRecording();
-                startRecording();
-            });
+                startRecording(); });
+        }
+        else if (port == LOOPER_STOP)
+        {
+            m_stopButton.connect(data, [this](bool pressed, double interval, bool doubleClick)
+                                 {
+                                     if (!pressed)
+                                     {
+                                         return;
+                                     }
+                                     if (m_state == LOOPER_STATE_INACTIVE)
+                                     {
+                                         //
+                                         startPlaying();
+                                     }
+                                     else
+                                     {
+                                         stop();
+                                     } });
         }
     }
 
@@ -308,15 +360,28 @@ public:
     /// \param The number of samples to be read from the input and writte to the output.
     void run(uint32_t nrOfSamples)
     {
+
         updateParameters();
+        updateState();
 
         m_now += double(nrOfSamples) / m_sampleRate;
+        if ((m_now - m_lastSend) > 0.25)
+        {
+            *m_positionParameter = m_currentLoopIndex / 48000.0;
+            m_lastSend = m_now;
+        }
+
+        *m_lenghtParameter = m_loopLength / 48000.0;
+
         if (m_state == LOOPER_STATE_INACTIVE)
         {
+
             for (uint32_t s = 0; s < nrOfSamples; ++s)
             {
-                m_output1[s] = m_dryAmount * m_input1[s];
-                m_output2[s] = m_dryAmount * m_input2[s];
+                // m_output1[s] = m_dryAmount * m_input1[s];
+                // m_output2[s] = m_dryAmount * m_input2[s];
+                m_output1[s] = m_input1[s];
+                m_output2[s] = m_input2[s];
             }
             return;
         }
@@ -330,7 +395,7 @@ public:
             // Check if we reached the threshold to start recording.
             if (m_state == LOOPER_STATE_WAITING_FOR_THRESHOLD && (fabs(in1) >= m_threshold || fabs(in2) >= m_threshold))
             {
-                Dub& dub = m_dubs[m_nrOfDubs];
+                Dub &dub = m_dubs[m_nrOfDubs];
                 dub.m_startIndex = m_currentLoopIndex;
                 m_state = LOOPER_STATE_RECORDING;
             }
@@ -341,23 +406,25 @@ public:
                 m_storage1[m_nrOfUsedSamples] = in1;
                 m_storage2[m_nrOfUsedSamples] = in2;
                 m_nrOfUsedSamples++;
-                Dub& dub = m_dubs[m_nrOfDubs];
+                Dub &dub = m_dubs[m_nrOfDubs];
                 dub.m_length++;
             }
 
             // Playback all active dubs.
-            float out1 = m_dryAmount * in1;
-            float out2 = m_dryAmount * in2;
+            // float out1 = m_dryAmount * in1;
+            // float out2 = m_dryAmount * in2;
+            float out1 = in1;
+            float out2 = in2;
             for (size_t t = 0; t < m_nrOfDubs; t++)
             {
-                Dub& dub = m_dubs[t];
+                Dub &dub = m_dubs[t];
                 if (m_currentLoopIndex < dub.m_startIndex)
                     continue;
                 if (m_currentLoopIndex >= dub.m_startIndex + dub.m_length)
                     continue;
                 size_t index = dub.m_storageOffset + (m_currentLoopIndex - dub.m_startIndex);
-                out1 += m_storage1[index];
-                out2 += m_storage2[index];
+                out1 += m_storage1[index] * m_dryAmount;
+                out2 += m_storage2[index] * m_dryAmount;
             }
 
             // Store accumulated output.
@@ -384,7 +451,7 @@ public:
                     // Stop the recording only, if we did not have the threshold, yet.
                     // That allows to start recording right at the start of the loop.
                     finishRecording();
-                    if(*m_continuousDubParameter && m_nrOfDubs > 0)
+                    if (*m_continuousDubParameter && m_nrOfDubs > 0)
                     {
                         // This is the second dub, meaning we're overdubbing so don't
                         // actually stop recording dubs until the user clicks the
@@ -402,14 +469,18 @@ private:
     //
 
     /// Threshold parameter
-    const float* m_thresholdParameter = NULL;
+    const float *m_thresholdParameter = NULL;
+    float *m_positionParameter = NULL;
+    float *m_lenghtParameter = NULL;
+    int *m_value_note = NULL;
 
+    const float *m_modeParameter = NULL;
     /// Dry amount parameter
-    const float* m_dryAmountParameter = NULL;
+    const float *m_dryAmountParameter = NULL;
 
     /// Continuous dub mode parameter
-    const float* m_continuousDubParameter = NULL;
-    
+    const float *m_continuousDubParameter = NULL;
+
     /// Activate button
     MomentaryButton m_activateButton;
     /// Reset button
@@ -420,24 +491,25 @@ private:
     MomentaryButton m_redoButton;
     /// Dub button
     MomentaryButton m_dubButton;
-
+    /// Stop button
+    MomentaryButton m_stopButton;
     //
     // All audio inputs
     //
 
     /// Audio input 1
-    const float* m_input1 = NULL;
+    const float *m_input1 = NULL;
     /// Audio input 2
-    const float* m_input2 = NULL;
+    const float *m_input2 = NULL;
 
     //
     // All audio outputs
     //
 
     /// Audio output 1
-    float* m_output1 = NULL;
+    float *m_output1 = NULL;
     /// audio output 2
-    float* m_output2 = NULL;
+    float *m_output2 = NULL;
 
     //
     // Internal state
@@ -449,6 +521,8 @@ private:
     State m_state = LOOPER_STATE_INACTIVE;
     /// The stored threshold as a linear value
     float m_threshold = 0.0f;
+    /// The position
+    size_t m_position = 0;
     /// The stored dry amount
     float m_dryAmount = 1.0f;
     /// Where are we with the first (main) loop. The first loop governs all the loops!
@@ -457,7 +531,7 @@ private:
     size_t m_loopLength = 0;
     /// Current time, sample accurate used for buttons
     double m_now = 0;
-
+    double m_lastSend = 0;
     //
     // Storage memory for audio
     //
@@ -467,9 +541,9 @@ private:
     /// Number of samples already used
     size_t m_nrOfUsedSamples = 0;
     /// Storage for first channel
-    float* m_storage1 = NULL;
+    float *m_storage1 = NULL;
     /// Storage for second channel
-    float* m_storage2 = NULL;
+    float *m_storage2 = NULL;
 
     //
     // Store information about the dubs
@@ -483,7 +557,7 @@ private:
     Dub m_dubs[NR_OF_DUBS];
 
     /// If we want to log to a file, we can use this.
-    FILE* m_logFile = NULL;
+    FILE *m_logFile = NULL;
 
     /// Log function (printf-style)
     void log(const char *formatString, ...)
@@ -513,6 +587,8 @@ private:
         m_currentLoopIndex = 0;
         m_loopLength = 0;
         m_nrOfUsedSamples = 0;
+        m_position = 0;
+        m_lastSend = 0;
     }
 
     /// Start recording a dub if possible (a dub and memory for audio left).
@@ -526,7 +602,7 @@ private:
             return;
 
         // Prepare the dub.
-        Dub& dub = m_dubs[m_nrOfDubs];
+        Dub &dub = m_dubs[m_nrOfDubs];
         dub.m_storageOffset = m_nrOfUsedSamples;
         dub.m_length = 0;
 
@@ -550,7 +626,7 @@ private:
 
         // We did record something, so make sure we will use it.
         m_state = LOOPER_STATE_PLAYING;
-        Dub& dub = m_dubs[m_nrOfDubs];
+        Dub &dub = m_dubs[m_nrOfDubs];
         if (m_nrOfDubs == 0)
         {
             // This was the first dub which governs the loop length.
@@ -597,7 +673,7 @@ private:
 
         // Deactivate the undone dub.
         m_nrOfDubs--;
-        Dub& dub = m_dubs[m_nrOfDubs];
+        Dub &dub = m_dubs[m_nrOfDubs];
         // Make sure that next time we record the undone dub will be overwritten. Recording
         // next time will invalidate any possiblity to redo!
         m_nrOfUsedSamples = dub.m_storageOffset;
@@ -623,7 +699,7 @@ private:
             return;
 
         // Can redo!
-        Dub& dub = m_dubs[m_nrOfDubs];
+        Dub &dub = m_dubs[m_nrOfDubs];
         // Make sure that we do not overwrite the dubs audio data when recording
         // next time.
         m_nrOfUsedSamples = dub.m_storageOffset + dub.m_length;
@@ -638,6 +714,18 @@ private:
         m_nrOfDubs++;
     }
 
+    void stop()
+    {
+        m_state = LOOPER_STATE_INACTIVE;
+        m_currentLoopIndex = 0;
+        m_lastSend = 0;
+    }
+
+    void startPlaying()
+    {
+        m_state = LOOPER_STATE_PLAYING;
+    }
+
     /// Update all the parameters from the inputs.
     void updateParameters()
     {
@@ -648,29 +736,34 @@ private:
         m_undoButton.run(m_now);
         m_redoButton.run(m_now);
         m_dubButton.run(m_now);
+        m_stopButton.run(m_now);
+    }
+
+    void updateState()
+    {
     }
 };
 
 //
 // The functions required by the LV2 interface. Simply forward to the Looper class.
 //
-static LV2_Handle instantiate(const LV2_Descriptor* descriptor, double rate, const char* bundlePath,
-    const LV2_Feature* const* features)
+static LV2_Handle instantiate(const LV2_Descriptor *descriptor, double rate, const char *bundlePath,
+                              const LV2_Feature *const *features)
 {
-    return (LV2_Handle)new Looper(rate);
+    return (LV2_Handle) new Looper(rate);
 }
 static void activate(LV2_Handle instance) {}
 static void deactivate(LV2_Handle instance) {}
-static void cleanup(LV2_Handle instance) { delete static_cast<Looper*>(instance); }
-static const void* extensionData(const char* uri) { return NULL; }
-static void connectPort(LV2_Handle instance, uint32_t port, void* data)
+static void cleanup(LV2_Handle instance) { delete static_cast<Looper *>(instance); }
+static const void *extensionData(const char *uri) { return NULL; }
+static void connectPort(LV2_Handle instance, uint32_t port, void *data)
 {
-    Looper* looper = static_cast<Looper*>(instance);
+    Looper *looper = static_cast<Looper *>(instance);
     looper->connectPort(static_cast<PortIndex>(port), data);
 }
 static void run(LV2_Handle instance, uint32_t nrOfSamples)
 {
-    Looper* looper = static_cast<Looper*>(instance);
+    Looper *looper = static_cast<Looper *>(instance);
     looper->run(nrOfSamples);
 }
 
@@ -678,33 +771,40 @@ static void run(LV2_Handle instance, uint32_t nrOfSamples)
 /// Descriptors for the various functions called by the LV2 host
 ///
 static const LV2_Descriptor descriptor =
-{
-    /// The URI which identifies the plugin
-    LOOPER_URI,
-    /// Instantiate the plugin.
-    instantiate,
-    /// Connect a port, called once for each port.
-    connectPort,
-    /// Activate the plugin (unused).
-    activate,
-    /// Process a bunch of samples.
-    run,
-    /// Deactivate the plugin (unused).
-    deactivate,
-    /// Cleanup, will destroy the plugin.
-    cleanup,
-    /// Get information about used extensions (unused).
-    extensionData
-};
+    {
+        /// The URI which identifies the plugin
+        SKHSYNTH_URI,
+        /// Instantiate the plugin.
+        instantiate,
+        /// Connect a port, called once for each port.
+        connectPort,
+        /// Activate the plugin (unused).
+        activate,
+        /// Process a bunch of samples.
+        run,
+        /// Deactivate the plugin (unused).
+        deactivate,
+        /// Cleanup, will destroy the plugin.
+        cleanup,
+        /// Get information about used extensions (unused).
+        extensionData};
 
 ///
 /// DLL entry point which is called with index 0.. until it returns NULL.
 ///
-LV2_SYMBOL_EXPORT const LV2_Descriptor* lv2_descriptor(uint32_t index)
+LV2_SYMBOL_EXPORT const LV2_Descriptor *lv2_descriptor(uint32_t index)
 {
     switch (index)
     {
-        case 0:  return &descriptor;
-        default: return NULL;
+    case 0:
+        return &descriptor;
+    default:
+        return NULL;
     }
 }
+
+//*m_lenghtParameter = *m_lenghtParameter + 0.11;
+// unsigned long sz = sizeof(m_storage1);
+// char a[100];
+// sprintf(a, "%lu", sz);
+// log(a);

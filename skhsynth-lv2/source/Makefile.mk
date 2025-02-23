@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
-# Makefile for loopor.lv2 #
+# Makefile for skhsynth.lv2 #
 # ----------------------- #
-# Created by falkTX, Stevie
+# Created by Skyhawk
 #
 
 AR  ?= ar
